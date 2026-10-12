@@ -7,6 +7,8 @@ export interface ExecutorConfig {
   hyperliquidApiUrl: string;
   pollMs: number;
   enableLiveExecution: boolean;
+  fundingTriggerBps: number;
+  side: "long" | "short";
   executorPrivateKey?: `0x${string}`;
   oracleSignerPrivateKey?: `0x${string}`;
   addresses: {
@@ -30,6 +32,8 @@ export const config: ExecutorConfig = {
   hyperliquidApiUrl: process.env.HYPERLIQUID_API_URL ?? "https://api.hyperliquid-testnet.xyz",
   pollMs: Number(process.env.EXECUTOR_POLL_MS ?? 15000),
   enableLiveExecution: process.env.EXECUTOR_ENABLE_LIVE_EXECUTION === "true",
+  fundingTriggerBps: Number(process.env.FUNDING_TRIGGER_BPS ?? -1),
+  side: (process.env.STRATEGY_SIDE === "short" ? "short" : "long"),
   executorPrivateKey: (process.env.EXECUTOR_PRIVATE_KEY as `0x${string}`) || undefined,
   oracleSignerPrivateKey:
     (process.env.ORACLE_SIGNER_PRIVATE_KEY as `0x${string}`) || undefined,

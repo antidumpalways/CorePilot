@@ -87,7 +87,10 @@ async function tick(
       }
     }
 
-    const ev = evaluateStrategy(s, data, DEFAULT_FUNDING_TRIGGER);
+    const ev = evaluateStrategy(s, data, {
+      fundingBelowBps: config.fundingTriggerBps,
+      side: config.side,
+    });
     if (!ev.triggered || !ev.request) {
       log.info(`strategy #${s.id}: ${ev.reason ?? "idle"} (${ev.triggerLabel})`);
       continue;
