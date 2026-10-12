@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+out/
+cache/
+coverage/
+internal/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+packages/contracts/lib/
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/
