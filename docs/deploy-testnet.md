@@ -11,6 +11,24 @@ Everything below is **testnet only**. No real funds.
 - Add Elysium Testnet to your wallet:
   - RPC `https://testnet-rpc.elysium.kinetiq.xyz`, chain `99801`, symbol `HYPE`.
 
+## Quick path (recommended — one command)
+
+The script does **everything**: deploy → bootstrap → write `apps/executor/.env` and
+`apps/web/.env`.
+
+```powershell
+# 1) set your TESTNET private key (throwaway wallet only)
+Copy-Item packages\contracts\.env.deploy.example packages\contracts\.env.deploy
+notepad packages\contracts\.env.deploy          # fill DEPLOYER_PRIVATE_KEY
+
+# 2) run it
+pnpm setup:testnet
+```
+
+Then jump to **§4 Run the live loop**.
+
+The manual steps below are the same thing done by hand, if you prefer.
+
 ## 1. Deploy the contracts
 
 ```bash

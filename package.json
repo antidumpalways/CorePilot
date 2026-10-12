@@ -13,6 +13,7 @@
     "dev:executor": "pnpm --filter @corepilot/executor dev",
     "dev:web": "pnpm --filter @corepilot/web dev",
     "contracts:build": "cd packages/contracts && forge build",
-    "contracts:test": "cd packages/contracts && forge test"
+    "contracts:test": "cd packages/contracts && forge test",
+    "setup:testnet": "powershell -ExecutionPolicy Bypass -File scripts/setup-testnet.ps1"
   }
 }
