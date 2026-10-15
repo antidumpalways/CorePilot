@@ -26,12 +26,14 @@ contract Deploy is Script {
         PilotToken pilot = new PilotToken();
         PilotStaking staking = new PilotStaking(IERC20(address(pilot)));
         StrategyRegistry registry = new StrategyRegistry(staking);
+        staking.setStrategyRegistry(address(registry));
         ExecutionReceiptRegistry receipts = new ExecutionReceiptRegistry();
         SignedMarketDataOracle oracle = new SignedMarketDataOracle(deployer);
         MockExecutionAdapter adapter = new MockExecutionAdapter();
         ExecutionController controller =
             new ExecutionController(registry, oracle, adapter, receipts);
         receipts.setController(address(controller));
+        adapter.setController(address(controller));
 
         // FeeModule needs USDC + PILOT addresses. On testnet, pass the deployed USDC predeploy.
         address usdc = vm.envOr("USDC_ADDRESS", address(0));

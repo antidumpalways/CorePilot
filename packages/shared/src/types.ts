@@ -13,12 +13,10 @@ export type Side = "long" | "short";
 
 export type PaymentAsset = "USDC" | "PILOT";
 
+/** @deprecated EXECUTED may mean adapter request, not confirmed venue fill. Use Receipt. */
 export type ExecutionStatus = "EXECUTED" | "REJECTED";
 
-/**
- * Error codes mirror the custom errors in `ExecutionController.sol`.
- * Keep these in sync with the contract.
- */
+/** Controller/preflight error vocabulary. ExecutionCapacityExceeded is legacy only. */
 export const ExecutionErrorCode = {
   StrategyInactive: "StrategyInactive",
   StrategyExpired: "StrategyExpired",
@@ -28,6 +26,10 @@ export const ExecutionErrorCode = {
   MarketNotAllowed: "MarketNotAllowed",
   InvalidMarketData: "InvalidMarketData",
   NotionalExceeded: "NotionalExceeded",
+  CreatorNotBonded: "CreatorNotBonded",
+  ExecutorNotBonded: "ExecutorNotBonded",
+  InvalidExecutionRequest: "InvalidExecutionRequest",
+  InvalidAdapterRequestId: "InvalidAdapterRequestId",
 } as const;
 export type ExecutionErrorCode =
   (typeof ExecutionErrorCode)[keyof typeof ExecutionErrorCode];
@@ -79,7 +81,7 @@ export interface ConstraintCheck {
   checked: Record<string, boolean>;
 }
 
-/** A requested execution produced by the evaluator. */
+/** @deprecated Legacy flat request. Migrate to ExecutionIntent; map its action to the contract tuple. */
 export interface ExecutionRequest {
   strategyId: number;
   market: Market;
@@ -89,6 +91,7 @@ export interface ExecutionRequest {
   slippageBps: number;
 }
 
+/** @deprecated Legacy API record. EXECUTED does not prove a venue fill; use Receipt. */
 export interface ExecutionReceipt {
   strategyId: number;
   intentNonce: string;

@@ -20,7 +20,7 @@ export const elysiumTestnet = defineChain({
     public: { http: [RPC_URL] },
   },
   blockExplorers: {
-    default: { name: "Elysium Explorer", url: "https://explorer.elysium.kinetiq.xyz" },
+    default: { name: "Elysium Testnet Explorer", url: "https://elysium.kinetiq.xyz/testnet-explorer" },
   },
   testnet: true,
 });

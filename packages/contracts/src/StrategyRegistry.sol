@@ -4,8 +4,8 @@ pragma solidity ^0.8.24;
 import {PilotStaking} from "./PilotStaking.sol";
 
 /// @title StrategyRegistry
-/// @notice Stores strategy configuration. Constraints are declared here and enforced by the
-///         ExecutionController. A strategy becomes active only when its creator is bonded.
+/// @notice Stores strategy identity and hard execution bounds. Signal matching and policy
+///         decisions are made off-chain; `strategyType` is metadata, not on-chain verification.
 contract StrategyRegistry {
     struct Strategy {
         address creator;
@@ -83,7 +83,9 @@ contract StrategyRegistry {
         Strategy storage s = _strategies[strategyId];
         if (s.creator == address(0)) revert UnknownStrategy();
         if (msg.sender != s.creator) revert NotCreator();
-        if (expiry <= block.timestamp) revert InvalidParams();
+        if (maxNotionalUsd == 0 || maxLeverageBps == 0 || expiry <= block.timestamp) {
+            revert InvalidParams();
+        }
         s.maxLeverageBps = maxLeverageBps;
         s.maxSlippageBps = maxSlippageBps;
         s.maxNotionalUsd = maxNotionalUsd;
@@ -99,6 +101,13 @@ contract StrategyRegistry {
         if (active && !staking.isCreatorBonded(strategyId)) revert InvalidParams();
         s.active = active;
         emit StrategyActiveSet(strategyId, active);
+    }
+
+    /// @notice Canonical creator authority used by PilotStaking for all creator-bond operations.
+    function creatorOf(uint256 strategyId) external view returns (address) {
+        address creator = _strategies[strategyId].creator;
+        if (creator == address(0)) revert UnknownStrategy();
+        return creator;
     }
 
     function getStrategy(uint256 strategyId) external view returns (Strategy memory) {

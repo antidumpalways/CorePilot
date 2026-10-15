@@ -14,8 +14,13 @@ contract PilotToken {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    uint256 public constant FAUCET_AMOUNT = 1_000e18;
+    uint256 public constant FAUCET_AMOUNT = 10_000e18;
     mapping(address => bool) public faucetUsed;
+    address public immutable owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -50,7 +55,7 @@ contract PilotToken {
 
     /// @notice Test-only mint. Restricted to the deployer for controlled test setups.
     function mint(address to, uint256 amount) external {
-        // NOTE: test-only; production tokenomics are out of scope for this contract.
+        require(msg.sender == owner, "PILOT: owner only");
         _mint(to, amount);
     }
 

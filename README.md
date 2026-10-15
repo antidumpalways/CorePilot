@@ -2,16 +2,16 @@
 
 **Programmable strategy execution layer for Elysium + HyperCore.**
 
-CorePilot lets strategy creators define automated trading strategies that execute against
-HyperCore while users **keep custody of their capital** in their own HyperCore accounts (via a
-revocable, trade-only agent).
+CorePilot is an early testnet prototype for expressing a funding-rate signal, an open-position
+action, execution bounds, and observable adapter requests. It does **not** currently prove a
+HyperCore order or fill, or wire a verified per-strategy policy store for live dispatch.
 
-- On-chain on **Elysium**: strategy registry, user authorization, constraint enforcement, fee
-  accounting, execution receipts.
-- Execution: MVP runs through an **executor + Hyperliquid agent API** today; migrates to
-  Elysium's **native HyperCore precompile + CoreWriter** later (same interfaces).
-- Token: **$PILOT** — creator bond, executor bond, registration burn, usage-driven
-  buyback/burn. Launch via **Ascend** at Elysium mainnet.
+- On-chain on **Elysium**: strategy registry, creator/executor bonds, hard-bound checks,
+  mock/testnet adapter dispatch, and receipts recording an adapter request or a reported rejection.
+- Off-chain: executor evaluates a funding-rate policy only when a verified, stored per-strategy
+  policy is available. The current chain read has no such source, so chain strategies are skipped.
+- **$PILOT** currently backs creator/executor bonds on testnet. Automatic slashing, venue-fill
+  verification, native CoreWriter integration, and production token mechanics are not implemented.
 
 ## Docs
 
@@ -42,7 +42,7 @@ pnpm install
 pnpm -r --if-present typecheck      # all TS packages
 ```
 
-### Executor (demo mode, live Hyperliquid data — no chain config needed)
+### Executor (deterministic, simulation-only demo without chain config)
 
 ```bash
 pnpm --filter @corepilot/executor start
@@ -72,8 +72,11 @@ pnpm --filter @corepilot/api dev            # degrades gracefully without a DB
 
 ## Status
 
-Early stage. Contracts, SDK, executor, API, and web app are scaffolded and typecheck/build
-clean. MVP scope is a single `HYPE Funding Trigger` strategy executed on testnet.
+Funding Rate is the only currently supported signal; Open Position is the supported action.
+Other signals shown in the product are planned. The API returns `REQUIRES_POLICY` and never
+dispatches. A new deployment does not make existing deployed bytecode change; verify addresses
+and contract versions before using the SDK or web app. An accepted adapter request is not a
+venue fill.
 
 ## Non-negotiables
 

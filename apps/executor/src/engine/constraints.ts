@@ -1,45 +1,60 @@
 import {
   ExecutionErrorCode,
-  type ConstraintCheck,
-  type ExecutionRequest,
-  type StrategyConfig,
+  type ConstraintEvaluation,
+  type ExecutionConstraints,
+  type ExecutionIntent,
 } from "@corepilot/shared";
 
 /**
- * Off-chain mirror of the on-chain `ExecutionController` checks.
- * Used to avoid sending transactions that would revert.
+ * Off-chain preflight only; the controller remains authoritative at dispatch.
  */
 export function checkConstraints(
-  strategy: StrategyConfig,
-  req: ExecutionRequest,
-  nowSec: number,
-): ConstraintCheck {
+  bounds: ExecutionConstraints,
+  intent: ExecutionIntent,
+  observedAtMs: number,
+  nowMs = Date.now(),
+): ConstraintEvaluation {
   const violations: ExecutionErrorCode[] = [];
   const checked: Record<string, boolean> = {};
 
-  const marketOk = req.market.toUpperCase() === strategy.market.toUpperCase();
+  const marketOk = intent.strategyId === bounds.strategyId &&
+    intent.market.toUpperCase() === bounds.market.toUpperCase();
   checked.market = marketOk;
   if (!marketOk) violations.push(ExecutionErrorCode.MarketNotAllowed);
 
-  const notionalOk = req.notionalUsd <= strategy.maxNotionalUsd;
+  const requestOk = Number.isSafeInteger(intent.notionalUsd) && intent.notionalUsd > 0 &&
+    Number.isSafeInteger(intent.leverageBps) && intent.leverageBps > 0;
+  checked.request = requestOk;
+  if (!requestOk) violations.push(ExecutionErrorCode.InvalidExecutionRequest);
+
+  const notionalOk = Number.isSafeInteger(intent.notionalUsd) && intent.notionalUsd > 0 &&
+    intent.notionalUsd <= bounds.maxNotionalUsd;
   checked.notional = notionalOk;
-  if (!notionalOk) violations.push(ExecutionErrorCode.NotionalExceeded);
+  if (requestOk && !notionalOk) violations.push(ExecutionErrorCode.NotionalExceeded);
 
-  const levOk = req.leverageBps <= strategy.maxLeverageBps;
+  const levOk = Number.isSafeInteger(intent.leverageBps) && intent.leverageBps > 0 &&
+    intent.leverageBps <= bounds.maxLeverageBps;
   checked.leverage = levOk;
-  if (!levOk) violations.push(ExecutionErrorCode.LeverageExceeded);
+  if (requestOk && !levOk) violations.push(ExecutionErrorCode.LeverageExceeded);
 
-  const slipOk = req.slippageBps <= strategy.maxSlippageBps;
+  const slipOk = Number.isSafeInteger(intent.slippageBps) && intent.slippageBps >= 0 &&
+    intent.slippageBps <= bounds.maxSlippageBps;
   checked.slippage = slipOk;
   if (!slipOk) violations.push(ExecutionErrorCode.SlippageExceeded);
 
-  const expiryOk = nowSec < strategy.expiry;
+  const expiryOk = nowMs < bounds.expiry * 1000;
   checked.expiry = expiryOk;
   if (!expiryOk) violations.push(ExecutionErrorCode.StrategyExpired);
 
-  const activeOk = strategy.active;
+  const activeOk = bounds.active;
   checked.active = activeOk;
   if (!activeOk) violations.push(ExecutionErrorCode.StrategyInactive);
 
-  return { ok: violations.length === 0, violations, checked };
+  const dataOk = Number.isFinite(observedAtMs) && observedAtMs > 0 &&
+    Number.isFinite(bounds.maxMarketDataAgeMs) && bounds.maxMarketDataAgeMs > 0 &&
+    nowMs >= observedAtMs && nowMs - observedAtMs <= bounds.maxMarketDataAgeMs;
+  checked.marketDataFreshness = dataOk;
+  if (!dataOk) violations.push(ExecutionErrorCode.InvalidMarketData);
+
+  return { ok: violations.length === 0, violations, checked, evaluatedAtMs: nowMs };
 }

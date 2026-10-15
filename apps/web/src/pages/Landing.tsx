@@ -1,100 +1,34 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { DataSourceBadge } from "../components/DataSourceBadge";
-import { Panel } from "../components/Panel";
+import { CorePilotMark } from "../components/CorePilotMark";
 
-const STEPS = [
-  {
-    tag: "01",
-    title: "Non-custodial",
-    body: "Capital stays in the user's own HyperCore account. CorePilot never takes custody — a revocable, trade-only agent can place and cancel orders but can never withdraw or transfer.",
-  },
-  {
-    tag: "02",
-    title: "Hard constraints",
-    body: "Every strategy is bounded on-chain: market, max leverage, max slippage, max notional and expiry. Invalid executions must revert.",
-  },
-  {
-    tag: "03",
-    title: "Receipts",
-    body: "Each execution attempt is evaluated and recorded — accepted or rejected — with an auditable receipt, so automation is verifiable rather than opaque.",
-  },
+type Example = "request" | "rejection" | "blocked";
+const flow = [
+  ["01", "Strategy creator", "Defines funding rule and hard limits"],
+  ["02", "CorePilot strategy", "Registry records the execution envelope"],
+  ["03", "Trader authorization", "Wallet-signed personal limits · configured testnet"],
+  ["04", "Bonded executor", "Evaluates policy before adapter dispatch"],
+  ["05", "HyperCore", "Venue order / fill not yet confirmed"],
 ];
+const values = [
+  ["Capital boundary", "Trading capital is not deposited into a CorePilot vault. User trade-only authorization is a planned integration, not a verified current permission."],
+  ["Programmable limits", "Market, notional, leverage, slippage, expiry, and bonds are checked before adapter dispatch."],
+  ["Transparent records", "Adapter requests and reported rejections remain inspectable. Neither is proof of a HyperCore fill."],
+];
+const examples: Record<Example, { label: string; result: string; detail: string }> = {
+  request: { label: "Adapter requested", result: "REQUEST RECORDED", detail: "Hard bounds passed. A testnet adapter request was accepted; venue fill remains unconfirmed." },
+  rejection: { label: "Rejection reported", result: "REPORTED REJECTION", detail: "An executor supplied a rejection reason. The contract does not independently verify it." },
+  blocked: { label: "Constraint blocked", result: "NO ON-CHAIN RECEIPT", detail: "A failing controller check reverts before adapter dispatch." },
+};
 
 export function Landing() {
-  return (
-    <div className="flex flex-col gap-8">
-      <section className="cp-panel overflow-hidden">
-        <div className="grid gap-8 p-8 md:grid-cols-[1.4fr_1fr] md:p-10">
-          <div className="flex flex-col justify-center gap-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <DataSourceBadge source="TESTNET" />
-              <span className="cp-label">Elysium + HyperCore</span>
-            </div>
-            <h1 className="text-3xl font-semibold leading-tight tracking-tight text-paper md:text-4xl">
-              Programmable strategy execution for Elysium + HyperCore.
-            </h1>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted">
-              Publish trigger + constraint strategies that execute against HyperCore while users
-              keep custody of their capital. Bounded, revocable, and receipted.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/strategies" className="cp-btn-primary">
-                Explore Strategies
-              </Link>
-              <Link to="/create" className="cp-btn-ghost">
-                Create Strategy
-              </Link>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-line bg-ink-900/70 p-5">
-            <div className="cp-label">Capital model</div>
-            <pre className="cp-mono mt-3 whitespace-pre-wrap text-[11px] leading-relaxed text-muted">
-{`USER'S HYPERCORE ACCOUNT
-  capital (e.g. 10,000 USDC)
-        │  revocable TRADE-ONLY agent
-        ▼
-   COREPILOT EXECUTOR
-        │  bounded by constraints
-        ▼
-     HYPERCORE`}
-            </pre>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
-              <div className="rounded border border-line bg-ink-800 px-3 py-2">
-                <div className="cp-label">Trading capital</div>
-                <div className="mt-1 text-paper">HyperCore (user)</div>
-              </div>
-              <div className="rounded border border-line bg-ink-800 px-3 py-2">
-                <div className="cp-label">Economic security</div>
-                <div className="mt-1 text-paper">PILOT</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        {STEPS.map((step) => (
-          <Panel key={step.tag} title={step.title} subtitle={`Step ${step.tag}`}>
-            <p className="text-sm leading-relaxed text-muted">{step.body}</p>
-          </Panel>
-        ))}
-      </section>
-
-      <section className="cp-panel p-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-paper">What this is not</h2>
-            <p className="mt-1 text-xs text-muted">
-              No pooled vault, no delegated custody, no APY, no return promises. CorePilot charges a
-              flat service fee only when it actually performs an execution.
-            </p>
-          </div>
-          <Link to="/monitor" className="cp-btn-ghost shrink-0">
-            Open Execution Monitor
-          </Link>
-        </div>
-      </section>
-    </div>
-  );
+  const [example, setExample] = useState<Example>("request");
+  return <div className="landing-shell min-h-screen text-paper"><header className="border-b border-line"><div className="mx-auto flex h-[70px] max-w-[1280px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8"><Link to="/" className="flex items-center gap-2.5"><CorePilotMark size={38} /><span className="text-base font-semibold tracking-[-.04em]">CorePilot</span></Link><nav aria-label="Public navigation" className="hidden items-center gap-6 text-xs text-muted md:flex"><a href="#how-it-works" className="hover:text-paper">How it works</a><a href="#execution-truth" className="hover:text-paper">Execution truth</a><Link to="/monitor" className="hover:text-paper">Technical monitor</Link></nav><Link to="/strategies" className="cp-btn-primary">Explore Strategies ↗</Link></div></header>
+    <main><section className="mx-auto grid max-w-[1280px] gap-10 px-4 pb-20 pt-20 sm:px-6 md:pb-28 md:pt-28 lg:grid-cols-[minmax(0,1.1fr)_minmax(350px,.9fr)] lg:items-center lg:px-8"><div><div className="cp-kicker text-accent">CorePilot / Elysium testnet prototype</div><h1 className="mt-6 max-w-[760px] text-[clamp(46px,5.2vw,76px)] font-extrabold leading-[1.03] tracking-[-.065em]">Automate HyperCore strategies <span className="text-accent">without giving up custody.</span></h1><p className="mt-6 max-w-[620px] text-[15px] leading-7 text-muted">Creators define bounded strategies. Traders can sign CorePilot limits when testnet services are configured. Hyperliquid trade-only access and venue fills remain unverified.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/strategies" className="cp-btn-primary">Explore Strategies ↗</Link><Link to="/create" className="cp-btn-ghost">Create Strategy</Link></div><div className="mt-9 flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-[.1em] text-muted"><span className="rounded border border-line px-2.5 py-1.5">Funding Rate supported</span><span className="rounded border border-line px-2.5 py-1.5">Hard bounds on-chain</span><span className="rounded border border-warn/40 px-2.5 py-1.5 text-warn">Venue fill unverified</span></div></div><div className="landing-hero-card overflow-hidden rounded-xl border border-line bg-ink-800 shadow-panel"><div className="flex items-center justify-between border-b border-line px-5 py-4"><span className="font-mono text-[11px] text-muted">STRATEGY / EXAMPLE</span><span className="rounded border border-line px-2 py-1 font-mono text-[10px] text-muted">SIMULATED</span></div><div className="p-6 sm:p-8"><div className="cp-kicker text-accent">WHEN</div><div className="mt-3 text-sm text-muted">HYPE Funding Rate</div><div className="mt-2 font-mono text-[clamp(30px,4vw,48px)] font-semibold tracking-[-.06em]">&lt; −1.00 <span className="text-lg text-muted">bps</span></div><div className="my-7 border-t border-line" /><div className="cp-kicker text-accent">THEN</div><div className="mt-3 text-[clamp(24px,3vw,36px)] font-semibold tracking-[-.045em]">Open HYPE LONG</div><div className="my-7 border-t border-line" /><div className="cp-kicker text-accent">WITH / hard boundaries</div><div className="mt-4 grid grid-cols-3 gap-3 font-mono text-sm"><div><div className="text-[10px] text-muted">NOTIONAL</div><div className="mt-2">$25,000</div></div><div><div className="text-[10px] text-muted">LEVERAGE</div><div className="mt-2">3×</div></div><div><div className="text-[10px] text-muted">SLIPPAGE</div><div className="mt-2">0.50%</div></div></div></div><div className="border-t border-line bg-ink-900 px-6 py-3 text-[11px] text-muted">Illustrative rule · live policies require creator signature and registry verification.</div></div></section>
+      <section id="how-it-works" className="border-y border-line bg-ink-900"><div className="mx-auto max-w-[1280px] px-4 py-20 sm:px-6 lg:px-8"><div className="cp-kicker text-accent">How it works</div><h2 className="mt-3 text-[clamp(28px,3vw,40px)] font-semibold tracking-[-.045em]">Simple on the surface. Bounded underneath.</h2><div className="mt-9 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-5">{flow.map(([number,title,detail]) => <div key={number} className="min-h-[170px] bg-ink-800 p-5"><div className="font-mono text-xs text-accent">{number}</div><h3 className="mt-8 text-sm font-semibold">{title}</h3><p className="mt-2 text-xs leading-5 text-muted">{detail}</p></div>)}</div><div className="mt-3 text-[11px] text-muted">Current testnet stage: registry limits, signed CorePilot authorization, and adapter-request records. Hyperliquid agent access and venue fill verification remain unproven.</div></div></section>
+      <section className="mx-auto max-w-[1280px] px-4 py-20 sm:px-6 lg:px-8"><div className="grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">{values.map(([title,copy]) => <div key={title} className="bg-ink-800 p-7"><div className="h-1 w-8 rounded-full bg-accent" /><h3 className="mt-7 text-lg font-semibold">{title}</h3><p className="mt-3 text-sm leading-6 text-muted">{copy}</p></div>)}</div></section>
+      <section id="execution-truth" className="border-y border-line bg-ink-900"><div className="mx-auto grid max-w-[1280px] gap-8 px-4 py-20 sm:px-6 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><div className="cp-kicker text-accent">Execution truth</div><h2 className="mt-3 text-[clamp(28px,3vw,40px)] font-semibold tracking-[-.045em]">A request is not a fill.</h2><p className="mt-4 max-w-[430px] text-sm leading-6 text-muted">The controller checks hard limits before forwarding an intent. Funding policy is evaluated off-chain. The current adapter does not prove an order at HyperCore.</p><Link to="/monitor" className="mt-6 inline-flex text-sm text-accent hover:underline">Inspect technical monitor ↗</Link></div><div><div role="tablist" aria-label="Simulated execution outcomes" className="flex flex-wrap gap-2">{(Object.keys(examples) as Example[]).map(key => <button key={key} type="button" role="tab" aria-selected={example === key} className={example === key ? "cp-btn-primary text-xs" : "cp-btn-ghost text-xs"} onClick={() => setExample(key)}>{examples[key].label}</button>)}</div><div className="mt-3 rounded-xl border border-line bg-ink-800 p-6"><div className="flex items-center justify-between gap-2"><span className="cp-kicker">SIMULATED OUTCOME</span><span className="font-mono text-[10px] text-muted">HYPE / EXAMPLE</span></div><div className="mt-7 font-mono text-2xl font-semibold text-paper">{examples[example].result}</div><p className="mt-3 text-sm leading-6 text-muted">{examples[example].detail}</p><div className="mt-7 border-t border-line pt-4 font-mono text-[11px] text-muted">VENUE FILL <span className="float-right text-warn">NOT CONFIRMED</span></div></div></div></div></section>
+      <section className="mx-auto max-w-[1280px] px-4 py-24 text-center sm:px-6 lg:px-8"><h2 className="text-[clamp(30px,4vw,48px)] font-semibold tracking-[-.05em]">Explore the rules. See the boundaries.</h2><p className="mx-auto mt-4 max-w-[570px] text-sm leading-6 text-muted">Every data surface distinguishes live, testnet, simulated, demo, and unknown states.</p><div className="mt-7 flex justify-center gap-3"><Link to="/strategies" className="cp-btn-primary">Explore Strategies ↗</Link><Link to="/create" className="cp-btn-ghost">Create Strategy</Link></div></section></main>
+    <footer className="border-t border-line"><div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-4 py-6 text-xs text-muted sm:px-6 lg:px-8"><span>© CorePilot · Elysium testnet prototype</span><div className="flex gap-5"><Link to="/strategies" className="hover:text-paper">Explore</Link><Link to="/activity" className="hover:text-paper">Activity</Link><Link to="/monitor" className="hover:text-paper">Technical monitor</Link></div></div></footer>
+  </div>;
 }

@@ -1,6 +1,11 @@
 import type { DataSource } from "../lib/api";
 
 const STYLES: Record<DataSource, { label: string; className: string; dot: string }> = {
+  UNKNOWN: {
+    label: "SOURCE UNKNOWN",
+    className: "border-line bg-ink-700 text-muted",
+    dot: "bg-muted",
+  },
   LIVE: {
     label: "LIVE DATA",
     className: "border-long/40 bg-long/10 text-long",
@@ -8,18 +13,18 @@ const STYLES: Record<DataSource, { label: string; className: string; dot: string
   },
   TESTNET: {
     label: "TESTNET",
-    className: "border-accent/40 bg-accent/10 text-accent",
-    dot: "bg-accent",
-  },
-  SIMULATED: {
-    label: "SIMULATED",
     className: "border-warn/40 bg-warn/10 text-warn",
     dot: "bg-warn",
   },
+  SIMULATED: {
+    label: "SIMULATED",
+    className: "border-slate-500/40 bg-slate-500/10 text-slate-300",
+    dot: "bg-slate-400",
+  },
   DEMO: {
     label: "DEMO DATA",
-    className: "border-purple-400/40 bg-purple-400/10 text-purple-300",
-    dot: "bg-purple-400",
+    className: "border-line bg-ink-700 text-muted",
+    dot: "bg-muted",
   },
 };
 

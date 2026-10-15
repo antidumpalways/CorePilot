@@ -1,258 +1,96 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { DataSourceBadge } from "../components/DataSourceBadge";
-import { Panel, Stat } from "../components/Panel";
 import { EmptyState, Spinner } from "../components/Feedback";
-import { StatusBadge } from "../components/StatusBadge";
-import {
-  evaluateStrategy,
-  fetchMarketData,
-  fetchStrategies,
-  type ApiResult,
-  type EvaluateResult,
-  type MarketView,
-  type StrategyView,
-} from "../lib/api";
+import { SystemHealth } from "../components/SystemHealth";
+import { evaluateStrategy, fetchHealth, fetchMarketData, fetchStrategies, type ApiResult, type EvaluateResult, type HealthResult, type MarketView, type StrategyView } from "../lib/api";
 import { useApiResource } from "../lib/useApi";
 import { formatFunding, formatTimestamp, formatUsd } from "../lib/format";
 
 const POLL_MS = 5000;
+const DEMO_THRESHOLD_BPS = -1;
+type Mode = "API" | "DEMO";
+type Scenario = "matched" | "unmatched" | "constraint";
 
-const STEP_ORDER = ["leverage", "slippage", "notional", "market"] as const;
-const STEP_LABELS: Record<string, string> = {
-  leverage: "leverage",
-  slippage: "slippage",
-  notional: "capacity",
-  market: "market",
-};
-
-function StepList({ evaluation }: { evaluation: EvaluateResult }) {
-  return (
-    <div className="flex flex-col gap-2">
-      {STEP_ORDER.map((key) => {
-        const checked = evaluation.constraints.checked[key] ?? true;
-        const label = STEP_LABELS[key] ?? key;
-        return (
-          <div key={key} className="flex items-center gap-2 text-sm">
-            <span className={checked ? "text-long" : "text-short"}>{checked ? "✓" : "✗"}</span>
-            <span className={checked ? "text-paper" : "text-short"}>{label}</span>
-          </div>
-        );
-      })}
-      <div className="mt-1 border-t border-line pt-3">
-        {evaluation.constraints.ok ? (
-          <div className="inline-flex items-center gap-2 rounded border border-long/40 bg-long/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-long">
-            Execution accepted
-          </div>
-        ) : (
-          <div className="rounded border border-short/40 bg-short/10 px-3 py-1.5 text-xs text-short">
-            Rejected: {evaluation.constraints.violations.join(", ") || "constraint violation"}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function Stage({ index, label, detail, status }: { index: number; label: string; detail: string; status: string }) {
+  const positive = status === "MATCHED" || status === "READY" || status === "PASSED";
+  return <li className="flex gap-3 border-b border-line-soft py-3">
+    <span className={`grid h-7 w-7 shrink-0 place-items-center border font-mono text-[10px] ${positive ? "border-long/40 text-long" : "border-line text-muted"}`}>{String(index).padStart(2, "0")}</span>
+    <div className="min-w-0 flex-1"><div className="text-xs font-semibold text-paper">{label}</div><div className="mt-1 text-[11px] text-muted">{detail}</div></div>
+    <span className={`shrink-0 font-mono text-[10px] ${positive ? "text-long" : status === "BLOCKED" ? "text-warn" : "text-muted"}`}>{status}</span>
+  </li>;
 }
 
 export function Monitor() {
   const { id } = useParams();
   const strategiesResource = useApiResource<StrategyView[]>(fetchStrategies, []);
+  const health = useApiResource<HealthResult | null>(fetchHealth, []);
   const strategies = strategiesResource.result?.data ?? [];
-
   const [selectedId, setSelectedId] = useState<number | null>(id ? Number(id) : null);
-  const [polling, setPolling] = useState(true);
+  const [mode, setMode] = useState<Mode>("API");
+  const [scenario, setScenario] = useState<Scenario>("matched");
+  const [polling, setPolling] = useState(false);
   const [marketResult, setMarketResult] = useState<ApiResult<MarketView> | null>(null);
-  const [evaluation, setEvaluation] = useState<ApiResult<EvaluateResult> | null>(null);
+  const [evaluation, setEvaluation] = useState<ApiResult<EvaluateResult | null> | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (selectedId !== null) return;
-    const first = strategies[0];
-    if (first) setSelectedId(first.id);
-  }, [strategies, selectedId]);
 
-  const selectedStrategy = strategies.find((s) => s.id === selectedId) ?? null;
-  const marketSymbol = selectedStrategy?.market ?? "HYPE";
-
+  useEffect(() => { if (selectedId === null && strategies[0]) setSelectedId(strategies[0].id); }, [selectedId, strategies]);
+  useEffect(() => { if (id && Number(id) !== selectedId) setSelectedId(Number(id)); }, [id, selectedId]);
+  const strategy = strategies.find(item => item.id === selectedId) ?? null;
   const runOnce = useCallback(async () => {
-    if (selectedId === null) return;
-    const marketRes = await fetchMarketData(marketSymbol);
-    setMarketResult(marketRes);
-    const data = marketRes.data;
-    const evaluationRes = await evaluateStrategy(selectedId, {
-      market: data.market,
-      markPrice: data.markPrice,
-      fundingRateBps: data.fundingRateBps,
-      side: "long",
-    });
-    setEvaluation(evaluationRes);
-    setLastUpdated(Date.now());
-  }, [selectedId, marketSymbol]);
+    if (!strategy || mode !== "API") return;
+    setBusy(true);
+    try {
+      const [market, result] = await Promise.all([fetchMarketData(strategy.market), evaluateStrategy(strategy.id)]);
+      setMarketResult(market);
+      setEvaluation(result);
+      setLastUpdated(Date.now());
+    } finally { setBusy(false); }
+  }, [strategy, mode]);
+  useEffect(() => { void runOnce(); }, [runOnce]);
+  useEffect(() => { if (!polling || mode !== "API") return; const timer = setInterval(() => { void runOnce(); }, POLL_MS); return () => clearInterval(timer); }, [polling, mode, runOnce]);
 
-  useEffect(() => {
-    void runOnce();
-  }, [runOnce]);
+  const result = mode === "API" ? evaluation?.data : null;
+  const demoMatched = scenario !== "unmatched";
+  const demoConstraintPassed = scenario !== "constraint";
+  const demoFunding = scenario === "unmatched" ? -0.4 : -1.82;
+  const stages = mode === "API" ? [
+    ["Signal", result?.signal.type === "funding_rate" ? "Funding Rate · evidence not verified" : "Funding Rate · no authoritative evidence", "UNVERIFIED"],
+    ["Action / intent", "No normalized intent produced", "NOT BUILT"],
+    ["Policy", result?.policy.reason ?? "Awaiting API evaluation", result ? "BLOCKED" : "PENDING"],
+    ["Constraints", result?.constraints.reason ?? "No authoritative limits checked", "UNVERIFIED"],
+    ["Execution", "No adapter dispatch requested", "NOT REQUESTED"],
+    ["Receipt", "No receipt recorded; venue fill not confirmed", "NONE"],
+  ] : [
+    ["Signal", `Sample funding ${demoFunding.toFixed(2)} bps ${demoMatched ? "<" : "≥"} ${DEMO_THRESHOLD_BPS.toFixed(2)} bps`, demoMatched ? "MATCHED" : "NOT MATCHED"],
+    ["Action / intent", demoMatched ? "Sample intent · OPEN LONG · $1,000" : "No sample intent", demoMatched ? "READY" : "NONE"],
+    ["Policy", demoMatched ? "Sample condition allows intent" : "Sample condition denies intent", demoMatched ? "PASSED" : "BLOCKED"],
+    ["Constraints", !demoMatched ? "Not checked" : demoConstraintPassed ? "Illustrative limits pass" : "Illustrative notional limit fails", !demoMatched ? "SKIPPED" : demoConstraintPassed ? "PASSED" : "BLOCKED"],
+    ["Execution", "Simulation only · no adapter dispatch", "NOT REQUESTED"],
+    ["Receipt", "No chain or venue receipt", "NONE"],
+  ];
 
-  useEffect(() => {
-    if (!polling || selectedId === null) return;
-    const timer = setInterval(() => {
-      void runOnce();
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [polling, selectedId, runOnce]);
-
-  const market = marketResult?.data ?? null;
-  const evalData = evaluation?.data ?? null;
-  const triggered = evalData?.triggered ?? false;
-
-  const triggerLabel =
-    evaluation?.data.dataSource === "SIMULATED"
-      ? "funding < -1.00 bps"
-      : "funding < 0.00 bps (server stub)";
-
-  const currentValue = evalData?.request ? formatUsd(evalData.request.notionalUsd) : "—";
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-paper">Execution Monitor</h1>
-          <p className="mt-1 text-sm text-muted">
-            Live-ish evaluation of the strategy trigger and constraints.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {triggered ? (
-              <span className="inline-flex items-center gap-1.5 rounded border border-long/40 bg-long/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-long">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-long" />
-                Triggered
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded border border-line bg-ink-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-                <span className="h-1.5 w-1.5 rounded-full bg-muted" />
-                Idle
-              </span>
-            )}
-            {marketResult && <DataSourceBadge source={marketResult.source} />}
-            {evaluation && <DataSourceBadge source={evaluation.source} />}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="cp-input w-56"
-            value={selectedId ?? ""}
-            onChange={(event) => setSelectedId(Number(event.target.value))}
-          >
-            {strategies.length === 0 && <option value="">No strategies</option>}
-            {strategies.map((strategy) => (
-              <option key={strategy.id} value={strategy.id}>
-                #{strategy.id} · {strategy.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className={`cp-btn ${polling ? "border-long/50 bg-long/10 text-long" : "bg-ink-700"}`}
-            onClick={() => setPolling((value) => !value)}
-          >
-            {polling ? "Polling on" : "Polling off"}
-          </button>
-          <button type="button" className="cp-btn-ghost" onClick={() => void runOnce()}>
-            Run once
-          </button>
-        </div>
+  return <div className="space-y-7">
+    <div><div className="cp-kicker">Operations / execution</div><h1 className="cp-page-title mt-2">Execution Monitor</h1><p className="cp-page-subtitle">Signal → Action / Intent → Policy → Constraints → Execution → Receipt</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-4 border-y border-line py-3"><div className="flex gap-1" role="group" aria-label="Monitor mode"><button type="button" aria-pressed={mode === "API"} className={mode === "API" ? "cp-btn-primary" : "cp-btn-ghost"} onClick={() => setMode("API")}>API evaluation</button><button type="button" aria-pressed={mode === "DEMO"} className={mode === "DEMO" ? "cp-btn-primary" : "cp-btn-ghost"} onClick={() => { setMode("DEMO"); setPolling(false); }}>Demo simulation</button></div>{mode === "DEMO" ? <DataSourceBadge source="SIMULATED" /> : <DataSourceBadge source={evaluation?.source ?? "UNKNOWN"} />}</div>
+    {mode === "DEMO" && <div role="status" className="border-l-2 border-warn pl-3 text-xs text-warn">Illustrative local scenario. It does not read strategy policy, submit an adapter request, or write a receipt.</div>}
+    {mode === "API" && evaluation?.error && <div role="status" className="border-l-2 border-warn pl-3 text-xs text-warn">API evaluation unavailable: {evaluation.error}. No simulated result has replaced it.</div>}
+    <div className="grid gap-10 xl:grid-cols-[minmax(0,1.7fr)_minmax(260px,.8fr)]">
+      <div className="min-w-0 space-y-7">
+        <div className="flex flex-col gap-3 sm:flex-row"><select aria-label="Strategy" className="cp-input min-w-0 flex-1" value={selectedId ?? ""} onChange={event => setSelectedId(Number(event.target.value))}>{strategies.length === 0 && <option value="">Loading strategies</option>}{strategies.map(item => <option key={item.id} value={item.id}>#{item.id} · {item.name}</option>)}</select>{mode === "API" && <><button type="button" className="cp-btn-primary shrink-0" disabled={busy || !strategy} onClick={() => void runOnce()}>{busy && <Spinner className="h-3.5 w-3.5" />}{busy ? "Evaluating…" : "Run evaluation"}</button><button type="button" className="cp-btn-ghost" onClick={() => setPolling(!polling)}>{polling ? "Pause polling" : "Poll every 5s"}</button></>}</div>
+        {mode === "DEMO" && <div className="flex flex-wrap gap-2" role="group" aria-label="Demo scenario">{([ ["matched", "Condition matched"], ["unmatched", "No match"], ["constraint", "Constraint fails"] ] as const).map(([value,label]) => <button key={value} type="button" aria-pressed={scenario === value} className={scenario === value ? "cp-btn-primary" : "cp-btn-ghost"} onClick={() => setScenario(value)}>{label}</button>)}</div>}
+        {strategy ? <><div className="grid gap-4 border-y border-line-soft py-4 sm:grid-cols-3"><div><div className="cp-kicker">WHEN · signal</div><div className="mt-2 text-sm text-paper">Funding Rate</div><div className="mt-1 text-[11px] text-muted">{mode === "DEMO" ? `${demoFunding.toFixed(2)} bps · sample` : "Threshold not verified"}</div></div><div><div className="cp-kicker">THEN · action</div><div className="mt-2 text-sm text-paper">Open position</div><div className="mt-1 text-[11px] text-muted">{mode === "DEMO" ? "Illustrative LONG intent" : "Action not verified"}</div></div><div><div className="cp-kicker">WITH · constraints</div><div className="mt-2 text-sm text-paper">Bounded execution</div><div className="mt-1 text-[11px] text-muted">{mode === "DEMO" ? "Illustrative limits" : "On-chain limits not checked by API"}</div></div></div>
+          <section className="border-t border-line pt-5"><div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-[15px] font-semibold text-paper">Execution pipeline</h2>{lastUpdated && mode === "API" && <span className="font-mono text-[10px] text-muted">{new Date(lastUpdated).toLocaleTimeString("en-US", { hour12: false })}</span>}</div><ol>{stages.map(([label,detail,status], index) => <Stage key={label} index={index+1} label={label} detail={detail} status={status} />)}</ol></section>
+          {mode === "API" && <section className="border-t border-line pt-5"><h2 className="text-[15px] font-semibold text-paper">Evaluation log</h2><div className="mt-3 space-y-2 font-mono text-[11px] text-muted"><div>STATUS&nbsp;&nbsp; {result?.status ?? "UNAVAILABLE"}</div><div>REASON&nbsp;&nbsp; {result?.reason ?? evaluation?.error ?? "Awaiting response"}</div><div>PREVIEW {result?.previewInputs ?? "NOT SENT"}</div><div>FILL&nbsp;&nbsp;&nbsp; NOT CONFIRMED</div></div></section>}
+        </> : <EmptyState title="No strategy available" message="Wait for the registry or configure a strategy." />}
       </div>
-
-      {(marketResult?.error || evaluation?.error) && (
-        <div className="rounded-md border border-purple-400/30 bg-purple-400/10 px-4 py-2.5 text-xs text-purple-200">
-          API unavailable — showing SIMULATED evaluation. {marketResult?.error ?? evaluation?.error}
-        </div>
-      )}
-
-      {selectedId === null ? (
-        <EmptyState
-          title="No strategy selected"
-          message="Register a strategy, then select it here to monitor execution."
-        />
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-          <div className="flex flex-col gap-6">
-            <Panel title="Market" subtitle={market ? market.market : "Awaiting data"}>
-              {market ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Stat label="Mark price" value={formatUsd(market.markPrice)} hint={`source: ${market.source}`} />
-                  <Stat
-                    label="Funding (hourly)"
-                    value={formatFunding(market.fundingRateBps)}
-                    tone={market.fundingRateBps < 0 ? "down" : market.fundingRateBps > 0 ? "up" : "default"}
-                    hint={`${market.fundingRateBps.toFixed(4)} bps`}
-                  />
-                  <Stat label="Trigger" value={triggerLabel} hint="Condition" />
-                  <Stat
-                    label="Current value"
-                    value={currentValue}
-                    hint="Bounded notional for this execution"
-                    tone={triggered ? "up" : "default"}
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> Loading market data…
-                </div>
-              )}
-            </Panel>
-
-            <Panel
-              title="Strategy"
-              subtitle={selectedStrategy ? selectedStrategy.name : `#${selectedId}`}
-              actions={selectedStrategy && <StatusBadge active={selectedStrategy.active} />}
-            >
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Stat label="Market" value={marketSymbol} />
-                <Stat label="Type" value={selectedStrategy?.strategyType ?? "FUNDING_TRIGGER"} />
-              </div>
-            </Panel>
-          </div>
-
-          <div className="flex flex-col gap-6">
-            <Panel title="Constraint gate" subtitle="Executor checks before acceptance">
-              {evalData ? (
-                <StepList evaluation={evalData} />
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> Evaluating…
-                </div>
-              )}
-            </Panel>
-
-            <Panel title="Session" subtitle="Polling metadata">
-              <div className="flex flex-col gap-2 text-xs text-muted">
-                <div className="flex items-center justify-between">
-                  <span>Interval</span>
-                  <span className="cp-mono">{POLL_MS / 1000}s</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Last update</span>
-                  <span className="cp-mono">{lastUpdated ? formatTimestamp(lastUpdated) : "—"}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Strategy</span>
-                  <span className="cp-mono">#{selectedId}</span>
-                </div>
-              </div>
-              {evalData && (
-                <div className="mt-3 border-t border-line-soft pt-3 text-[11px] text-muted">
-                  Fee preview:{" "}
-                  <span className="cp-mono text-paper">{formatUsd(evalData.feePreview.feeUsd)}</span>{" "}
-                  · PILOT discount{" "}
-                  <span className="cp-mono text-long">
-                    {(evalData.feePreview.pilotDiscountBps / 100).toFixed(0)}%
-                  </span>
-                </div>
-              )}
-            </Panel>
-          </div>
-        </div>
-      )}
+      <aside className="min-w-0 space-y-7 xl:border-l xl:border-line-soft xl:pl-8">
+        <section><div className="flex items-center justify-between gap-3 border-b border-line pb-4"><h2 className="text-[15px] font-semibold text-paper">Market snapshot</h2>{mode === "API" && marketResult && <DataSourceBadge source={marketResult.source} />}</div>{mode === "DEMO" ? <div className="mt-4 text-xs text-muted">Scenario input: {demoFunding.toFixed(2)} bps · simulated</div> : <><div className="mt-3 font-mono text-xs text-muted">{marketResult?.data.market ?? "—"}</div><div className="mt-4 grid grid-cols-2 gap-5"><div><div className="cp-label">Mark price</div><div className="mt-2 font-mono text-lg text-paper">{formatUsd(marketResult?.data.markPrice)}</div></div><div><div className="cp-label">Funding / hour</div><div className="mt-2 font-mono text-lg text-paper">{formatFunding(marketResult?.data.fundingRateBps)}</div></div></div><div className="mt-4 text-[11px] text-muted">Updated {formatTimestamp(marketResult?.data.timestamp)}</div><div className="mt-2 text-[11px] text-muted">Context only · not evidence used by API evaluation.</div></>}</section>
+        <section><div className="border-b border-line pb-4"><h2 className="text-[15px] font-semibold text-paper">Execution truth</h2></div><dl className="text-xs">{[["Policy", mode === "API" ? "Unavailable" : "Sample only"], ["Adapter", "Not requested"], ["Venue fill", "Not confirmed"]].map(([label,value]) => <div key={label} className="flex justify-between gap-4 border-b border-line-soft py-3"><dt className="text-muted">{label}</dt><dd className="text-right text-paper">{value}</dd></div>)}</dl></section>
+        <SystemHealth health={health.result?.data ?? null} loading={health.loading && !health.result} unavailable={Boolean(health.result?.error)} />
+      </aside>
     </div>
-  );
+  </div>;
 }

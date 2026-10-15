@@ -1,6 +1,9 @@
 import { DEFAULT_MARKETS } from "@corepilot/shared";
+import type { StrategyPolicyV1, TraderAuthorizationV1, TradingAccessGrantV1 } from "@corepilot/shared";
+import { parseEvaluateResult, type EvaluateResult } from "./evaluation";
+export type { EvaluateResult } from "./evaluation";
 
-export type DataSource = "LIVE" | "TESTNET" | "SIMULATED" | "DEMO";
+export type DataSource = "LIVE" | "TESTNET" | "SIMULATED" | "DEMO" | "UNKNOWN";
 
 export interface ApiResult<T> {
   data: T;
@@ -11,12 +14,13 @@ export interface ApiResult<T> {
 
 export interface StrategyView {
   id: number;
+  chainStrategyId: number | null;
   name: string;
   description?: string | null;
   creator: string;
   market: string;
   strategyType: string;
-  active: boolean;
+  active: boolean | null;
   /** PILOT backing in whole tokens, or null when unknown (not returned by the API). */
   pilotBacking: number | null;
   /** Execution count, or null when unknown. */
@@ -29,7 +33,7 @@ export interface StrategyView {
 
 export interface MarketView {
   market: string;
-  markPrice: number;
+  markPrice: number | null;
   fundingRateBps: number;
   source: string;
   timestamp: number;
@@ -53,36 +57,30 @@ export interface ConstraintCheckView {
   checked: Record<string, boolean>;
 }
 
-export interface EvaluateResult {
-  strategyId: number;
-  triggered: boolean;
-  constraints: ConstraintCheckView;
-  request: {
-    strategyId: number;
-    market: string;
-    side: string;
-    notionalUsd: number;
-    leverageBps: number;
-    slippageBps: number;
-  } | null;
-  feePreview: {
-    feeUsd: number;
-    pilotDiscountBps: number;
-    discountedFeeUsd: number;
-  };
-  dataSource: DataSource;
-}
-
 export interface HealthResult {
   ok: boolean;
   service: string;
   chainId: number;
   db: boolean;
+  network?: { chainId: number };
+  components?: Partial<Record<"api" | "database" | "rpc" | "contracts" | "executor", HealthState>>;
+}
+
+export type HealthState = "operational" | "degraded" | "unavailable" | "unknown" | "not_instrumented";
+
+export interface CapabilityItem { type: string; support: "supported" | "planned"; }
+export interface CapabilityResult {
+  signals: CapabilityItem[];
+  actions: CapabilityItem[];
+  network?: { name: string; chainId: number };
+  contracts?: { configured: boolean; addresses: Record<string, boolean>;
+    deployment?: { registry: string | null; pilotToken: string | null; staking: string | null } };
+  executor?: { status: string };
 }
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8001").replace(/\/+$/, "");
 
-const REQUEST_TIMEOUT_MS = 5000;
+const REQUEST_TIMEOUT_MS = 15000;
 
 function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") {
@@ -105,12 +103,92 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(payload?.error ?? `HTTP ${response.status}`);
     }
     return (await response.json()) as T;
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface VerifiedPolicy { policy: StrategyPolicyV1; hash: `0x${string}`; status: "VERIFIED" | "DISABLED" }
+export interface AuthorizationView { authorization: TraderAuthorizationV1; status: string; policy?: StrategyPolicyV1 | null; reason?: string }
+export interface AuthorizationEventView { id: number; authorizationId: string; strategyId: number; action: "PAUSE" | "RESUME" | "REVOKE"; version: number; timestamp: string; provenance: "testnet" }
+
+export function fetchVerifiedPolicy(chainStrategyId: number) {
+  return request<VerifiedPolicy>(`/api/policies/${chainStrategyId}`);
+}
+
+export function saveSignedPolicy(policy: StrategyPolicyV1, signature: `0x${string}`) {
+  return request<VerifiedPolicy>(`/api/policies/${policy.strategyId}`, {
+    method: "POST", body: JSON.stringify({ policy, signature }),
+  });
+}
+
+export function fetchAuthorizations(trader: string) {
+  return request<{ data: AuthorizationView[]; provenance: string }>(`/api/authorizations/trader/${trader}`);
+}
+
+export function fetchAuthorizationEvents(trader: string) {
+  return request<{ data: AuthorizationEventView[]; provenance: string }>(`/api/authorization-events/trader/${trader}`);
+}
+
+export function saveSignedAuthorization(authorization: TraderAuthorizationV1, signature: `0x${string}`) {
+  return request<{ authorizationId: string; status: string }>("/api/authorizations", {
+    method: "POST", body: JSON.stringify({ authorization, signature }),
+  });
+}
+
+export function changeAuthorizationState(authorizationId: string, action: "PAUSE" | "RESUME" | "REVOKE", version: number, signature: `0x${string}`) {
+  return request<{ authorizationId: string; status: string; version: number }>(`/api/authorizations/${authorizationId}/state`, {
+    method: "POST", body: JSON.stringify({ action, version, signature }),
+  });
+}
+
+export interface TradingAccessView {
+  authorizationId: string;
+  executionAccount: string;
+  agentAddress: string;
+  isolationMode: "ISOLATED" | "COMPATIBILITY";
+  status: "ACTIVE" | "UNVERIFIED";
+  verifiedAt: string | null;
+  venue: "hypercore-testnet";
+  nativeAgentLimits: string;
+}
+
+export function fetchTradingAccess(authorizationId: string) {
+  return request<TradingAccessView>(`/api/trading-access/${authorizationId}`);
+}
+
+export function checkTradingAccess(input: { authorizationId: string; executionAccount: string;
+  agentAddress: string; isolationMode: "ISOLATED" | "COMPATIBILITY" }) {
+  return request<{ ready: boolean; reason: string; venue: "hypercore-testnet"; readOnly: true }>(
+    "/api/trading-access/check", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function saveSignedTradingAccess(grant: TradingAccessGrantV1, signature: `0x${string}`) {
+  return request<TradingAccessView>("/api/trading-access", {
+    method: "POST", body: JSON.stringify({ grant, signature }),
+  });
+}
+
+export interface RuntimeTraceView {
+  signalSource: "hypercore-mainnet";
+  policyLayer: "elysium-testnet";
+  executionVenue: "hypercore-testnet";
+  triggers: { id: number; matched: boolean; reason: string; observedAt: string;
+    snapshot: { market: string | null; fundingRateBps: number | null; source: string | null; observedAtMs: number | null } | null }[];
+  intents: { intentId: string; status: string; market: string; side: string;
+    createdAt: string; corePilotReceipt: { policyHash: string; authorizationId: string;
+      triggerId: number; intentId: string };
+    venueReceipt: { venue: string; clientOrderId: string; orderId: string | null;
+      status: string; filledSize: string | null; averagePrice: string | null;
+      lastReconciledAt: string | null } | null }[];
+}
+
+export function fetchRuntimeTrace(authorizationId: string) {
+  return request<RuntimeTraceView>(`/api/runtime/authorization/${authorizationId}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,6 +198,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const DEMO_STRATEGIES: StrategyView[] = [
   {
     id: 1,
+    chainStrategyId: null,
     name: "HYPE Funding Fade",
     description:
       "Open a bounded long when HYPE hourly funding prints below the trigger. Max 3x, 50bps slippage.",
@@ -136,6 +215,7 @@ const DEMO_STRATEGIES: StrategyView[] = [
   },
   {
     id: 2,
+    chainStrategyId: null,
     name: "BTC Basis Capture",
     description:
       "Long BTC when the hourly funding rate is deeply negative. Constraint-bounded notional.",
@@ -152,6 +232,7 @@ const DEMO_STRATEGIES: StrategyView[] = [
   },
   {
     id: 3,
+    chainStrategyId: null,
     name: "ETH Mean Reversion",
     description:
       "Funding-triggered ETH entry with tight slippage. Currently paused by the creator.",
@@ -191,7 +272,7 @@ const DEMO_EXECUTIONS: ExecutionView[] = [
   {
     id: 11,
     strategyId: 1,
-    status: "EXECUTED",
+    status: "ADAPTER_REQUESTED",
     requestedNotional: 8200,
     txHash: "0x9f1c2e3d4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c",
     externalExecutionId: "hl-order-448192",
@@ -211,7 +292,7 @@ const DEMO_EXECUTIONS: ExecutionView[] = [
   {
     id: 9,
     strategyId: 1,
-    status: "EXECUTED",
+    status: "ADAPTER_REQUESTED",
     requestedNotional: 6100,
     txHash: "0x1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
     externalExecutionId: "hl-order-447931",
@@ -225,14 +306,21 @@ const DEMO_EXECUTIONS: ExecutionView[] = [
 /* ------------------------------------------------------------------ */
 
 interface ApiStrategyRow {
+  identity?: { id?: number; chainStrategyId?: number | null };
+  source?: { provenance?: string | null };
+  signal?: unknown;
+  action?: unknown;
   id?: number;
   chainStrategyId?: number | null;
   creator?: string | null;
   name?: string | null;
   description?: string | null;
-  market?: string | null;
+  market?: string | { symbol?: string } | null;
   strategyType?: string | null;
   active?: boolean | null;
+  expiry?: number | null;
+  pilotBacking?: number | null;
+  constraints?: { maxNotionalUsd?: number; maxLeverageBps?: number; maxSlippageBps?: number } | null;
   createdAt?: string | null;
 }
 
@@ -246,6 +334,11 @@ interface ApiMarketRow {
 }
 
 interface ApiExecutionRow {
+  executionId?: string | null;
+  reason?: string | null;
+  transaction?: string | null;
+  timestamp?: string | null;
+  provenance?: string | null;
   id?: number;
   strategyId?: number | null;
   status?: string | null;
@@ -257,21 +350,22 @@ interface ApiExecutionRow {
 }
 
 function toStrategyView(row: ApiStrategyRow): StrategyView {
-  const id = typeof row.id === "number" ? row.id : Number(row.chainStrategyId ?? 0);
+  const id = row.identity?.id ?? row.id ?? Number(row.chainStrategyId ?? 0);
   return {
     id,
+    chainStrategyId: row.identity?.chainStrategyId ?? row.chainStrategyId ?? null,
     name: row.name?.trim() || `Strategy #${id}`,
     description: row.description ?? null,
     creator: row.creator ?? "",
-    market: (row.market ?? "—").toUpperCase(),
-    strategyType: row.strategyType ?? "FUNDING_TRIGGER",
-    active: row.active ?? true,
-    pilotBacking: null,
+    market: (typeof row.market === "object" && row.market !== null ? (row.market as { symbol?: string }).symbol : row.market ?? "—")?.toUpperCase() ?? "—",
+    strategyType: row.strategyType ?? "SIGNAL UNINDEXED",
+    active: row.active ?? null,
+    pilotBacking: typeof row.pilotBacking === "number" ? row.pilotBacking : null,
     executions: null,
-    expiry: null,
-    maxLeverageBps: null,
-    maxSlippageBps: null,
-    maxNotionalUsd: null,
+    expiry: typeof row.expiry === "number" ? row.expiry : null,
+    maxLeverageBps: row.constraints?.maxLeverageBps ?? null,
+    maxSlippageBps: row.constraints?.maxSlippageBps ?? null,
+    maxNotionalUsd: row.constraints?.maxNotionalUsd ?? null,
   };
 }
 
@@ -280,17 +374,31 @@ function toMarketSource(source: string | null | undefined): DataSource {
   if (value.includes("hyperliquid") || value.includes("hypercore")) return "LIVE";
   if (value === "elysium-oracle" || value === "oracle") return "LIVE";
   if (value === "simulated" || value === "mock") return "SIMULATED";
-  return "TESTNET";
+  return "UNKNOWN";
+}
+
+function toProvenance(value: string | null | undefined): DataSource {
+  switch (value?.toLowerCase()) {
+    case "live": return "LIVE";
+    case "testnet": return "TESTNET";
+    case "simulated": return "SIMULATED";
+    case "demo": return "DEMO";
+    default: return "UNKNOWN";
+  }
 }
 
 function toMarketView(row: ApiMarketRow): MarketView {
+  if (typeof row.fundingRateBps !== "number" || !Number.isFinite(row.fundingRateBps) ||
+      typeof row.timestamp !== "number" || !Number.isFinite(row.timestamp)) {
+    throw new Error("incomplete market snapshot");
+  }
   const source = row.source ?? "unknown";
   return {
     market: (row.market ?? "—").toUpperCase(),
-    markPrice: typeof row.markPrice === "number" ? row.markPrice : 0,
-    fundingRateBps: typeof row.fundingRateBps === "number" ? row.fundingRateBps : 0,
+    markPrice: typeof row.markPrice === "number" && Number.isFinite(row.markPrice) ? row.markPrice : null,
+    fundingRateBps: row.fundingRateBps,
     source,
-    timestamp: typeof row.timestamp === "number" ? row.timestamp : Date.now(),
+    timestamp: row.timestamp,
     dataSource: toMarketSource(source),
   };
 }
@@ -299,12 +407,12 @@ function toExecutionView(row: ApiExecutionRow): ExecutionView {
   return {
     id: typeof row.id === "number" ? row.id : 0,
     strategyId: typeof row.strategyId === "number" ? row.strategyId : 0,
-    status: row.status ?? "REJECTED",
+    status: row.status ?? "UNKNOWN",
     requestedNotional: typeof row.requestedNotional === "number" ? row.requestedNotional : null,
-    txHash: row.txHash ?? null,
-    externalExecutionId: row.externalExecutionId ?? null,
-    error: row.error ?? null,
-    createdAt: row.createdAt ?? null,
+    txHash: row.transaction ?? row.txHash ?? null,
+    externalExecutionId: row.executionId ?? row.externalExecutionId ?? null,
+    error: row.reason ?? row.error ?? null,
+    createdAt: row.timestamp ?? row.createdAt ?? null,
   };
 }
 
@@ -321,12 +429,31 @@ export async function fetchHealth(): Promise<ApiResult<HealthResult | null>> {
         service: json.service ?? "corepilot-api",
         chainId: typeof json.chainId === "number" ? json.chainId : 99801,
         db: Boolean(json.db),
+        network: json.network,
+        components: json.components,
       },
       source: "TESTNET",
       db: Boolean(json.db),
     };
   } catch (error) {
     return { data: null, source: "DEMO", db: false, error: errorMessage(error) };
+  }
+}
+
+export async function fetchCapabilities(): Promise<ApiResult<CapabilityResult>> {
+  try {
+    const json = await request<CapabilityResult>("/api/capabilities");
+    return { data: json, source: "TESTNET", db: false };
+  } catch (error) {
+    return {
+      data: {
+        signals: [{ type: "funding_rate", support: "supported" }],
+        actions: [{ type: "open_position", support: "supported" }],
+      },
+      source: "DEMO",
+      db: false,
+      error: errorMessage(error),
+    };
   }
 }
 
@@ -339,10 +466,10 @@ export async function fetchMarkets(): Promise<ApiResult<string[]>> {
         data: [...DEFAULT_MARKETS],
         source: "DEMO",
         db: Boolean(json.db),
-        error: "API returned no markets",
+        error: "API returned no markets; using a demo market list",
       };
     }
-    return { data: rows, source: "LIVE", db: Boolean(json.db) };
+    return { data: rows, source: "UNKNOWN", db: Boolean(json.db) };
   } catch (error) {
     return { data: [...DEFAULT_MARKETS], source: "DEMO", db: false, error: errorMessage(error) };
   }
@@ -365,7 +492,7 @@ export async function fetchStrategies(): Promise<ApiResult<StrategyView[]>> {
   try {
     const json = await request<{ data: ApiStrategyRow[] | null; db: boolean }>("/api/strategies");
     const rows = Array.isArray(json.data) ? json.data : [];
-    if (rows.length === 0) {
+    if (rows.length === 0 && !json.db) {
       return {
         data: DEMO_STRATEGIES,
         source: "DEMO",
@@ -373,7 +500,7 @@ export async function fetchStrategies(): Promise<ApiResult<StrategyView[]>> {
         error: "API returned no strategies",
       };
     }
-    return { data: rows.map(toStrategyView), source: "TESTNET", db: Boolean(json.db) };
+    return { data: rows.map(toStrategyView), source: rows.length ? toProvenance(rows[0].source?.provenance) : "UNKNOWN", db: Boolean(json.db) };
   } catch (error) {
     return { data: DEMO_STRATEGIES, source: "DEMO", db: false, error: errorMessage(error) };
   }
@@ -384,8 +511,9 @@ export async function fetchStrategy(id: number): Promise<ApiResult<StrategyView 
     const json = await request<{ data: ApiStrategyRow | null; db: boolean }>(
       `/api/strategies/${id}`,
     );
+    if (!json.data && json.db) return { data: null, source: "UNKNOWN", db: true };
     if (!json.data) throw new Error("strategy not found");
-    return { data: toStrategyView(json.data), source: "TESTNET", db: Boolean(json.db) };
+    return { data: toStrategyView(json.data), source: toProvenance(json.data.source?.provenance), db: Boolean(json.db) };
   } catch (error) {
     const demo = DEMO_STRATEGIES.find((s) => s.id === id) ?? null;
     return { data: demo, source: "DEMO", db: false, error: errorMessage(error) };
@@ -398,7 +526,7 @@ export async function fetchExecutions(id: number): Promise<ApiResult<ExecutionVi
       `/api/strategies/${id}/executions`,
     );
     const rows = Array.isArray(json.data) ? json.data : [];
-    if (rows.length === 0) {
+    if (rows.length === 0 && !json.db) {
       return {
         data: DEMO_EXECUTIONS.filter((e) => e.strategyId === id),
         source: "DEMO",
@@ -406,7 +534,7 @@ export async function fetchExecutions(id: number): Promise<ApiResult<ExecutionVi
         error: "API returned no executions",
       };
     }
-    return { data: rows.map(toExecutionView), source: "TESTNET", db: Boolean(json.db) };
+    return { data: rows.map(toExecutionView), source: rows.length ? toProvenance(rows[0].provenance) : "UNKNOWN", db: Boolean(json.db) };
   } catch (error) {
     return {
       data: DEMO_EXECUTIONS.filter((e) => e.strategyId === id),
@@ -426,89 +554,20 @@ export interface EvaluateParams {
 
 export async function evaluateStrategy(
   strategyId: number,
-  params: EvaluateParams = {},
-): Promise<ApiResult<EvaluateResult>> {
-  const market = params.market ?? "HYPE";
+): Promise<ApiResult<EvaluateResult | null>> {
   try {
-    const json = await request<{
-      strategyId: number;
-      triggered: boolean;
-      constraints: ConstraintCheckView;
-      request: EvaluateResult["request"];
-      feePreview: EvaluateResult["feePreview"];
-      db: boolean;
-    }>(`/api/executor/evaluate/${strategyId}`, {
+    const json = parseEvaluateResult(await request<unknown>(`/api/executor/evaluate/${strategyId}`, {
       method: "POST",
-      body: JSON.stringify(params),
-    });
+      body: JSON.stringify({}),
+    }));
+    if (json.strategyId !== strategyId) throw new Error("evaluation response strategy ID mismatch");
     return {
-      data: {
-        strategyId: json.strategyId,
-        triggered: Boolean(json.triggered),
-        constraints: json.constraints,
-        request: json.request,
-        feePreview: json.feePreview,
-        dataSource: "TESTNET",
-      },
-      source: "TESTNET",
+      data: json,
+      // The endpoint does not verify a chain policy or limits, even when DB metadata exists.
+      source: "UNKNOWN",
       db: Boolean(json.db),
     };
   } catch (error) {
-    return {
-      data: simulateEvaluation(strategyId, market, params),
-      source: "SIMULATED",
-      db: false,
-      error: errorMessage(error),
-    };
+    return { data: null, source: "UNKNOWN", db: false, error: errorMessage(error) };
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* Local simulation (used only when the API is unreachable)            */
-/* ------------------------------------------------------------------ */
-
-function simulateEvaluation(
-  strategyId: number,
-  market: string,
-  params: EvaluateParams,
-): EvaluateResult {
-  const markPrice = params.markPrice ?? demoMarket(market).markPrice;
-  const fundingRateBps = params.fundingRateBps ?? -1.82;
-  const side = params.side ?? "long";
-  const triggered = fundingRateBps < -1;
-
-  const constraints: ConstraintCheckView = {
-    ok: true,
-    violations: [],
-    checked: {
-      active: true,
-      expiry: true,
-      marketAllowed: true,
-      leverage: true,
-      slippage: true,
-      notional: true,
-    },
-  };
-
-  return {
-    strategyId,
-    triggered,
-    constraints,
-    request: triggered
-      ? {
-          strategyId,
-          market: market.toUpperCase(),
-          side,
-          notionalUsd: Math.min(markPrice > 0 ? markPrice : 100, 1000),
-          leverageBps: 300,
-          slippageBps: 50,
-        }
-      : null,
-    feePreview: {
-      feeUsd: 1.5,
-      pilotDiscountBps: 1500,
-      discountedFeeUsd: 1.5 * (1 - 1500 / 10_000),
-    },
-    dataSource: "SIMULATED",
-  };
 }

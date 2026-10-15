@@ -91,7 +91,7 @@ $execLines = @(
     "ELYSIUM_CHAIN_ID=99801",
     "HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz",
     "EXECUTOR_POLL_MS=15000",
-    "EXECUTOR_ENABLE_LIVE_EXECUTION=true",
+    "EXECUTOR_ENABLE_LIVE_EXECUTION=false",
     "EXECUTOR_PRIVATE_KEY=$pk",
     "ORACLE_SIGNER_PRIVATE_KEY=$pk",
     "PILOT_TOKEN_ADDRESS=$pilot",
@@ -129,6 +129,7 @@ Write-Host "  SignedMarketDataOracle: $oracle"
 Write-Host "  FeeModule:              $fee"
 Write-Host ""
 Write-Host "Wrote apps\executor\.env and apps\web\.env (git-ignored)." -ForegroundColor Green
+Write-Host "Chain strategies remain fail-closed: no verified per-strategy funding policy store is wired. Live execution stays disabled." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Next:" -ForegroundColor Cyan
 Write-Host "  pnpm --filter @corepilot/executor start"

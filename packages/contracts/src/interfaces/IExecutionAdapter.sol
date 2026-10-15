@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @notice Executes an approved strategy intent.
+/// @notice Dispatches an approved strategy intent; returning an id never confirms venue fill.
 /// @dev MVP implementations:
 ///      - `MockExecutionAdapter` (safe demo recorder)
-///      - `TestnetExecutionAdapter` (backend performs the Hyperliquid testnet action)
+///      - `TestnetExecutionAdapter` (emits a request for a backend; no fill proof)
 ///      Future implementation: `ElysiumCoreWriterAdapter` (Elysium's native fast-write path).
 ///      The interface is intentionally stable so the implementation can change without
 ///      redesigning the rest of the system.

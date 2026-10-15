@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">CorePilot</title>
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#19233C"/>
+      <stop offset="1" stop-color="#0A0E19"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#A6BEFF"/>
+      <stop offset=".52" stop-color="#7295FF"/>
+      <stop offset="1" stop-color="#5578EF"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="62" height="62" rx="16" fill="url(#surface)" stroke="#364467" stroke-width="2"/>
+  <path d="M45.5 18.5a19.5 19.5 0 1 0 0 27" fill="none" stroke="url(#blue)" stroke-width="8.5" stroke-linecap="round"/>
+  <path d="M34 32h12m-4.5-5.5L47 32l-5.5 5.5" fill="none" stroke="#D6E2FF" stroke-width="3.7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

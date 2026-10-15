@@ -18,6 +18,7 @@ const STRATEGIES = [
     market: "HYPE",
     strategyType: "FUNDING_TRIGGER",
     metadataUri: "ipfs://corepilot/hype-funding-long",
+    provenance: "demo",
   },
   {
     chainStrategyId: 2,
@@ -27,6 +28,7 @@ const STRATEGIES = [
     market: "BTC",
     strategyType: "FUNDING_TRIGGER",
     metadataUri: "ipfs://corepilot/btc-momentum-short",
+    provenance: "demo",
   },
   {
     chainStrategyId: 3,
@@ -36,6 +38,7 @@ const STRATEGIES = [
     market: "ETH",
     strategyType: "FUNDING_TRIGGER",
     metadataUri: "ipfs://corepilot/eth-neutral-basis",
+    provenance: "demo",
   },
 ];
 
@@ -47,6 +50,7 @@ const SNAPSHOTS = [
     source: "hyperliquid",
     timestamp: now - 3_600_000,
     signature: null,
+    provenance: "demo",
   },
   {
     market: "BTC",
@@ -55,6 +59,7 @@ const SNAPSHOTS = [
     source: "hyperliquid",
     timestamp: now - 3_600_000,
     signature: null,
+    provenance: "demo",
   },
   {
     market: "ETH",
@@ -63,6 +68,7 @@ const SNAPSHOTS = [
     source: "hyperliquid",
     timestamp: now - 3_600_000,
     signature: null,
+    provenance: "demo",
   },
 ];
 

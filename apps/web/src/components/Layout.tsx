@@ -1,82 +1,41 @@
-import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
-import { DataSourceBadge } from "./DataSourceBadge";
-import { FaucetButton } from "./FaucetButton";
+import { useState, type ReactNode } from "react";
+import { Link, NavLink } from "react-router-dom";
+import { useAccount } from "wagmi";
 import { WalletButton } from "./WalletButton";
-import { hasContractConfig } from "../lib/corepilot";
+import { CorePilotMark } from "./CorePilotMark";
+import { DataSourceBadge } from "./DataSourceBadge";
+import { elysiumTestnet } from "../lib/wagmi";
 
-const NAV = [
-  { to: "/strategies", label: "Strategies" },
-  { to: "/create", label: "Create" },
-  { to: "/monitor", label: "Monitor" },
+const navigation = [
+  { to: "/strategies", label: "Explore" },
+  { to: "/my-strategies", label: "My Strategies" },
+  { to: "/activity", label: "Activity" },
 ];
 
-function navClass(isActive: boolean): string {
-  return `rounded-md px-3 py-1.5 text-sm transition-colors ${
-    isActive ? "bg-ink-700 text-paper" : "text-muted hover:bg-ink-700/60 hover:text-paper"
-  }`;
+function Navigation({ onNavigate, mobile = false }: { onNavigate?: () => void; mobile?: boolean }) {
+  return <nav aria-label="Primary navigation" className={mobile ? "grid grid-cols-3 gap-1" : "hidden items-center gap-1 md:flex"}>
+    {navigation.map(item => <NavLink key={item.to} to={item.to} onClick={onNavigate} className={({ isActive }) => `cp-nav-item justify-center whitespace-nowrap ${isActive ? "cp-nav-item-active" : ""}`}>{item.label}</NavLink>)}
+  </nav>;
+}
+
+function AppHeader() {
+  const { chainId, isConnected } = useAccount();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const wrongNetwork = isConnected && chainId !== elysiumTestnet.id;
+  return <header className="sticky top-0 z-30 border-b border-line bg-ink-950/85 backdrop-blur-xl">
+    <div className="mx-auto flex h-[66px] max-w-[1520px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+      <Link to="/" className="flex shrink-0 items-center gap-2.5" aria-label="CorePilot Home" onClick={() => setMobileOpen(false)}><CorePilotMark /><span className="text-[16px] font-extrabold tracking-[-.055em] text-paper">CorePilot</span></Link>
+      <span className="mx-3 hidden h-5 w-px bg-line lg:block" />
+      <Navigation />
+      <div className="ml-auto flex items-center gap-2 sm:gap-3"><span className={`hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[.08em] xl:inline-flex ${wrongNetwork ? "text-warn" : "text-muted"}`}><span className={`cp-status-dot ${wrongNetwork ? "bg-warn" : "bg-accent"}`} />{wrongNetwork ? "Wrong network" : "Elysium testnet"}</span><Link to="/create" className="cp-btn-primary hidden lg:inline-flex">Create Strategy <span aria-hidden>↗</span></Link><Link to="/create" className="cp-btn-primary hidden min-w-9 px-2 sm:inline-flex lg:hidden" aria-label="Create Strategy">＋</Link><WalletButton /><button type="button" className="cp-btn-ghost min-w-9 px-2 md:hidden" aria-label={mobileOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? "×" : "☰"}</button></div>
+    </div>
+    {mobileOpen && <div className="border-t border-line bg-ink-900 px-4 py-3 md:hidden"><Navigation mobile onNavigate={() => setMobileOpen(false)} /><Link to="/create" onClick={() => setMobileOpen(false)} className="cp-btn-primary mt-3 w-full sm:hidden">Create Strategy ↗</Link></div>}
+  </header>;
 }
 
 export function Layout({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-screen flex-col bg-ink-950">
-      <header className="sticky top-0 z-20 border-b border-line bg-ink-900/90 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-4 px-4">
-          <div className="flex items-center gap-6">
-            <NavLink to="/" className="flex items-center gap-2">
-              <span className="grid h-7 w-7 place-items-center rounded border border-accent/50 bg-accent/15 text-accent">
-                <span className="text-xs font-bold">CP</span>
-              </span>
-              <span className="text-sm font-semibold tracking-tight text-paper">CorePilot</span>
-            </NavLink>
-            <nav className="hidden items-center gap-1 md:flex">
-              {NAV.map((item) => (
-                <NavLink key={item.to} to={item.to} className={({ isActive }) => navClass(isActive)}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
-            <FaucetButton />
-            <WalletButton />
-          </div>
-        </div>
-        <nav className="flex items-center gap-1 border-t border-line px-4 py-1.5 md:hidden">
-          {NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} className={({ isActive }) => navClass(isActive)}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
-
-      {!hasContractConfig && (
-        <div className="border-b border-warn/30 bg-warn/10">
-          <div className="mx-auto w-full max-w-7xl px-4 py-2 text-[11px] text-warn">
-            SDK unconfigured — set the <span className="cp-mono">VITE_*_ADDRESS</span> variables to
-            enable on-chain reads, strategy creation and the PILOT faucet. Read-only demo mode is active.
-          </div>
-        </div>
-      )}
-
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</main>
-
-      <footer className="border-t border-line bg-ink-900/60">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-5 text-[11px] text-muted sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="cp-label">Data sources</span>
-            <DataSourceBadge source="LIVE" />
-            <DataSourceBadge source="TESTNET" />
-            <DataSourceBadge source="SIMULATED" />
-            <DataSourceBadge source="DEMO" />
-          </div>
-          <p className="max-w-xl leading-relaxed">
-            CorePilot is non-custodial. Nothing here is a return promise or APY. Simulated data is
-            never presented as live. Testnet only.
-          </p>
-        </div>
-      </footer>
-    </div>
-  );
+  return <div className="app-shell flex min-h-screen flex-col"><AppHeader />
+    <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-7 sm:px-6 lg:px-8 lg:py-9">{children}</main>
+    <footer className="border-t border-line"><div className="mx-auto flex max-w-[1520px] flex-wrap items-center justify-between gap-3 px-4 py-4 text-[11px] text-muted sm:px-6 lg:px-8"><span>CorePilot · Elysium testnet prototype</span><div className="flex items-center gap-3"><DataSourceBadge source="TESTNET" /><Link className="hover:text-paper" to="/monitor">Technical monitor ↗</Link><Link className="hover:text-paper" to="/app">System overview ↗</Link></div></div></footer>
+  </div>;
 }

@@ -19,9 +19,10 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-line bg-ink-900/40 px-6 py-10 text-center">
-      <p className="text-sm font-medium text-paper">{title}</p>
-      {message && <p className="max-w-md text-xs text-muted">{message}</p>}
+    <div className="relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-[18px] border border-line/60 bg-ink-800 px-6 py-12 text-center shadow-panel before:pointer-events-none before:absolute before:-top-24 before:h-44 before:w-72 before:rounded-full before:bg-accent/10 before:blur-3xl">
+      <span className="relative mb-1 grid h-10 w-10 place-items-center rounded-[12px] border border-accent/30 bg-accent/10 text-lg text-accent" aria-hidden>◇</span>
+      <p className="relative text-[16px] font-bold tracking-[-.025em] text-paper">{title}</p>
+      {message && <p className="relative max-w-md text-[13px] leading-5 text-muted">{message}</p>}
       {action}
     </div>
   );

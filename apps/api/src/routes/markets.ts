@@ -29,8 +29,8 @@ export async function marketsRoutes(app: FastifyInstance): Promise<void> {
     "/api/market/:symbol",
     async (request, reply) => {
       const symbol = request.params.symbol?.trim();
-      if (!symbol) {
-        return reply.code(400).send({ error: "symbol is required", db: false });
+      if (!symbol || !/^[A-Za-z0-9_-]{1,32}$/.test(symbol)) {
+        return reply.code(400).send({ error: "symbol must be a valid market symbol", db: false });
       }
 
       if (!(await dbAvailable())) return { data: null, db: false };
@@ -40,7 +40,7 @@ export async function marketsRoutes(app: FastifyInstance): Promise<void> {
       const rows = await db
         .select()
         .from(marketSnapshots)
-        .where(eq(marketSnapshots.market, symbol))
+        .where(eq(marketSnapshots.market, symbol.toUpperCase()))
         .orderBy(desc(marketSnapshots.timestamp))
         .limit(1);
 

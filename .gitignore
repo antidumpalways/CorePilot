@@ -10,6 +10,7 @@ internal/
 !.env.example
 !.env.deploy.example
 *.log
+.local/
 .DS_Store
 packages/contracts/lib/
 packages/contracts/out/

@@ -5,29 +5,30 @@ export default {
     extend: {
       colors: {
         ink: {
-          950: "#08090c",
+          950: "#07080b",
           900: "#0b0d12",
           800: "#11141b",
-          700: "#171b24",
-          600: "#1f2530",
+          700: "#151923",
+          600: "#1a1f2b",
         },
         line: {
-          DEFAULT: "#232a36",
-          soft: "#1a202a",
+          DEFAULT: "#31394a",
+          soft: "#222a38",
         },
         accent: {
-          DEFAULT: "#4c8dff",
-          soft: "#1b2b4d",
-          strong: "#2f6fe0",
+          DEFAULT: "#688bff",
+          soft: "#1b2d59",
+          strong: "#8aa6ff",
         },
         long: "#22c55e",
         short: "#ef4444",
         warn: "#f59e0b",
-        muted: "#8a93a6",
-        paper: "#e6e9ef",
+        muted: "#9ba6b9",
+        paper: "#f6f8ff",
       },
       fontFamily: {
         sans: [
+          "Manrope",
           "Inter",
           "ui-sans-serif",
           "system-ui",
@@ -48,7 +49,7 @@ export default {
         ],
       },
       boxShadow: {
-        panel: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -20px rgba(0,0,0,0.9)",
+        panel: "0 1px 0 rgba(255,255,255,.06) inset, 0 20px 50px -24px rgba(0,0,0,.7), 0 0 55px -45px rgba(104,139,255,.45)",
       },
     },
   },

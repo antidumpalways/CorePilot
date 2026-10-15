@@ -1,0 +1,17 @@
+{
+  "name": "CorePilot",
+  "short_name": "CorePilot",
+  "description": "Programmable strategy execution for Elysium and HyperCore",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07080b",
+  "theme_color": "#0b0d12",
+  "icons": [
+    {
+      "src": "/corepilot-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

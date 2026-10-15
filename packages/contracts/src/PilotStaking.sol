@@ -3,6 +3,10 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "./interfaces/IERC20.sol";
 
+interface IStrategyCreatorRegistry {
+    function creatorOf(uint256 strategyId) external view returns (address);
+}
+
 /// @title PilotStaking
 /// @notice Creator bond + executor bond with a withdrawal cooldown.
 /// @dev Bonds are economic accountability for the *service provider*, not trading capital
@@ -29,6 +33,7 @@ contract PilotStaking {
     mapping(address => Bond) public executorBonds;
 
     address public owner;
+    IStrategyCreatorRegistry public strategyRegistry;
 
     event CreatorStaked(uint256 indexed strategyId, address indexed creator, uint256 amount);
     event CreatorUnstakeRequested(uint256 indexed strategyId, uint256 unlockAt);
@@ -42,6 +47,10 @@ contract PilotStaking {
     error NoBond();
     error CooldownActive(uint256 unlockAt);
     error BondBelowMinimum();
+    error StrategyRegistryAlreadySet();
+    error StrategyRegistryNotSet();
+    error NotStrategyCreator();
+    error InvalidRegistry();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -53,9 +62,23 @@ contract PilotStaking {
         owner = msg.sender;
     }
 
+    /// @notice Bind once to the registry that owns strategy identities. Configure before
+    ///         accepting creator bonds; a bond cannot be claimed by an arbitrary staker.
+    function setStrategyRegistry(address _registry) external onlyOwner {
+        if (address(strategyRegistry) != address(0)) revert StrategyRegistryAlreadySet();
+        if (_registry.code.length == 0) revert InvalidRegistry();
+        strategyRegistry = IStrategyCreatorRegistry(_registry);
+    }
+
+    modifier onlyStrategyCreator(uint256 strategyId) {
+        if (address(strategyRegistry) == address(0)) revert StrategyRegistryNotSet();
+        if (strategyRegistry.creatorOf(strategyId) != msg.sender) revert NotStrategyCreator();
+        _;
+    }
+
     // ---- Creator bonds -------------------------------------------------------
 
-    function stakeCreator(uint256 strategyId, uint256 amount) external {
+    function stakeCreator(uint256 strategyId, uint256 amount) external onlyStrategyCreator(strategyId) {
         require(pilot.transferFrom(msg.sender, address(this), amount), "transfer failed");
         Bond storage b = creatorBonds[strategyId];
         b.amount += amount;
@@ -63,14 +86,14 @@ contract PilotStaking {
         emit CreatorStaked(strategyId, msg.sender, amount);
     }
 
-    function requestUnstakeCreator(uint256 strategyId) external {
+    function requestUnstakeCreator(uint256 strategyId) external onlyStrategyCreator(strategyId) {
         Bond storage b = creatorBonds[strategyId];
         if (b.amount == 0) revert NoBond();
         b.unlockAt = block.timestamp + COOLDOWN;
         emit CreatorUnstakeRequested(strategyId, b.unlockAt);
     }
 
-    function unstakeCreator(uint256 strategyId) external {
+    function unstakeCreator(uint256 strategyId) external onlyStrategyCreator(strategyId) {
         Bond storage b = creatorBonds[strategyId];
         if (b.amount == 0) revert NoBond();
         if (b.unlockAt == 0 || block.timestamp < b.unlockAt) revert CooldownActive(b.unlockAt);
